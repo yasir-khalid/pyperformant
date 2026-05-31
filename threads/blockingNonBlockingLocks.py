@@ -1,3 +1,10 @@
+"""
+We learn the concept of blocking and non-blocking locks in Threads
+Non-blocking doesn't just hold off the thread at the lock stage, else all your n-threads would be waiting on the lock
+hogging up resources not doing anything else; so non-blocking allows the thread to be used elsewhere
+
+"""
+
 import time
 from typing import List
 from typing import Callable

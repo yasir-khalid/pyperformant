@@ -1,3 +1,13 @@
+"""
+Highlights that if threads were to Truly start at the same time 
+Reflective using Barrier concept, then the lock acquiring my threads is non-deterministic,
+and hard to predict
+
+Compared to when you just do a:
+[thread.start() for thread in threads]
+Here there might be a microseconds difference between n[0] vs n[1] thread, hence you see deterministic sequence
+"""
+
 import threading, time
 from collections import Counter
 from pylogger import logger
