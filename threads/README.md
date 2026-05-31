@@ -2,8 +2,11 @@
 
 A reference guide covering Python's `threading` module — when to use it, when not to, and the concurrency primitives you'll actually need in production.
 
-Based on Kevin Wood Robotics' [Python Threading Tutorial](https://www.youtube.com/watch?v=Rm9Pic2rpAQ).
-
+Sometimes threads might not produce print statements correctly, you you can use this hack:
+```python
+import sys
+print = lambda x: sys.stdout.write("%s\n" % x)
+```
 ---
 
 ## Table of Contents
@@ -402,9 +405,38 @@ Tradeoffs of multiprocessing:
 
 ---
 
-## Further Reading
+## Gaps worth filling
 
-- [`threading`](https://docs.python.org/3/library/threading.html) — stdlib reference
-- [`concurrent.futures`](https://docs.python.org/3/library/concurrent.futures.html) — high-level pools
-- [PEP 703](https://peps.python.org/pep-0703/) — making the GIL optional
-- Source video: [Python Threading Tutorial — Kevin Wood](https://www.youtube.com/watch?v=Rm9Pic2rpAQ)
+- `threading.Condition` — wait/notify with predicate. More general than Event; right primitive when Queue doesn't fit.
+- `Semaphore` / `BoundedSemaphore` — gating N concurrent ops (conn pools, per-host rate limits).
+- `RLock` vs `Lock` — recursive acquisition; matters for re-entrant code paths.
+- `Barrier` — rendezvous for N threads.
+- `threading.local()` and how it differs from `contextvars.ContextVar` (the latter matters once asyncio enters).
+- Race-condition mechanics — why `x += 1` isn't atomic, where the GIL releases (bytecode boundaries, I/O syscalls, `time.sleep`), which dict/list ops are de-facto atomic in CPython and why you still shouldn't rely on it.
+- Deadlock patterns — lock ordering, hierarchies, `acquire(timeout=)`.
+- Graceful shutdown — poison pill, Event-driven cancellation, draining bounded queues.
+- `concurrent.futures` deeper — `as_completed`, exception propagation (futures swallow until `.result()`), `Future.cancel()` only works pre-start, `map` ordering guarantees.
+- Asyncio interop — `asyncio.to_thread`, `loop.run_in_executor`, when blocking calls poison an event loop.
+- Debugging — `threading.enumerate()`, `faulthandler.dump_traceback_later`, py-spy `dump --pid`, `sys.settrace` for per-thread tracing.
+- Free-threaded CPython (PEP 703, 3.13+ `--disable-gil` builds) — changes the threading-vs-multiprocessing calculus for CPU work. Worth a half-day given your eval pipeline could become CPU-bound.
+
+**Exercises, ordered by yield**
+
+1. **Dining philosophers** — write the deadlock, then fix three ways (global ordering, asymmetric pickup, semaphore-gated seating). Teaches deadlock viscerally.
+2. **Concurrent scraper with per-domain rate limiting** — `BoundedSemaphore` per domain, shared `ThreadPoolExecutor`, Ctrl+C drains in-flight without dropping. Directly relevant to your Hetzner scraping infra.
+3. **Multi-stage pipeline** — N producers → bounded queue → M transformers → bounded queue → 1 writer. Poison pills propagate. Observe backpressure when downstream stalls.
+4. **Reader-writer lock from `Condition`** — multiple readers XOR one writer. Then add tests proving writer-starvation under reader-preferring policy. Flip to writer-preferring, observe inverse.
+5. **TTL cache** — thread-safe `dict` + background evictor daemon using `Event.wait(timeout)` rather than `sleep` (clean shutdown).
+6. **Bank ledger race** — N threads transferring between accounts. Naive impl + invariant test (sum constant). Watch it fail. Fix: lock-per-account, acquire in id-order to avoid deadlock.
+7. **Port scanner** — `ThreadPoolExecutor` + `as_completed` with per-future timeout, progress reported from main thread only (never from worker — teaches UI-thread discipline).
+8. **Token-bucket rate limiter** — `Condition` + `time.monotonic()`, exposed as context manager. Test under bursty load.
+9. **Reimplement `queue.Queue`** — `Lock` + two `Condition`s (not-empty, not-full). Cements why `Condition.wait()` needs a `while predicate:` loop (spurious wakeups, lost-wakeup hazard).
+10. **Race-condition fuzzer** — instrument a known-bad function, hammer it under contention until the bug surfaces. Rerun on free-threaded 3.13 build — note which races got worse without the GIL.
+
+**Diagnostic muscle to build alongside**
+
+- Reproduce a deadlock, attach `py-spy dump --pid <PID>`, read the stuck stacks.
+- Wrap hangs with `faulthandler.dump_traceback_later(5)` so they auto-confess.
+- Write tests that try hard to fail — random sleeps, high thread counts, repeat-until-flake. Most threading bugs hide because the test was too gentle.
+
+**Skip for now**: rolling your own lock from atomics (academic in Python — GIL hides too much), and CPython `_thread.c` source until you've felt the primitives.
