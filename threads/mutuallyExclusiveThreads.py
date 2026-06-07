@@ -1,6 +1,6 @@
 import threading
 import time
-from .pylogger import logger
+from pylogger import logger
 
 class MultiThreadedStateUpdate():
     def __init__(self):

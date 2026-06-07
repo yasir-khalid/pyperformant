@@ -1,7 +1,8 @@
+from time import sleep
 from concurrent.futures import ThreadPoolExecutor
 import time
 
-
+sleep
 start = time.perf_counter()
 
 def something(seconds: int = 2) -> None:
